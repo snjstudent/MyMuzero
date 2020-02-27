@@ -21,7 +21,6 @@ global model
 
 class node:
     def __init__(self, state, action, policy):
-        
         self.action = action
         self.state = state
         self.visit_counts = 0
@@ -82,21 +81,3 @@ class node:
             G_k.append(sum([discounts] * rewards[i:]) + (discount_per ** (K - 1 - i) * value))
         self.backup_parts_2(G_k, max_value, min_value)
         self.normalize_mean_value(max_value, min_value)
-
-    
-
-        
-        
-        
-                
-    
-    
-            
-
-
-        
-     
-
-
-
-            
