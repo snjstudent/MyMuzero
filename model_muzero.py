@@ -160,7 +160,7 @@ class Muzero:
     
     def compile_model(self):
         output = self.train_muzero(self.inputs)
-        model=Model(inputs=[self.inputs],outputs=[output])
+        model = Model(inputs=[self.inputs], outputs=[output])
         model.compile(optimizer=tfk.optimizer.Adam(lr=0.0002),
         loss='bce')
         return model
