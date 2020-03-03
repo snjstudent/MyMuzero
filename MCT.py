@@ -8,16 +8,19 @@ from tensorflow.keras.layers import Conv2D, Input, Layer, Dense, Flatten, Conv2D
 from tensorflow.keras.activations import tanh
 from tensorflow.keras.models import Model,Sequential
 #import tensorflow_addons as tfa
+import GameBoard_tmp
 import numpy as np
 import random
 import sys
 import math
 C_1, C_2 = 1.25, 19652
-K = 5
+K = 3
 discount_per = 0.8
 
 
 global model
+board = GameBoard_tmp.GameBoard()
+
 
 class node:
     def __init__(self, state, action, policy):
@@ -37,23 +40,27 @@ class node:
         
 
     def expansion(self):
-        global model
-        def expansion_child_node(nodes, child_node, action, num: int = 0):
-            legal_actions = self.state.legal_action(action)
-            pred_datas = [model(nodes.state, action) for action in legal_actions]
-            child_nodes = [node(pred_data[1], legal_actions[i], pred_data[2]) for i, pred_data in enumerate(pred_datas)]
-            child_node = child_nodes if num == 0 else child_node + child_nodes
-        
-        child_node_tmp = []
-        expansion_child_node(self, child_node_tmp, self.action)
-        for _ in range(K - 1):
-            for u, child_node in enumerate(child_node_tmp):
-                expansion_child_node(child_node, child_node_tmp, child_node.action, u)
+        def expansion_child_node(nodes, child_node_tmp, action, num: int = 0):
+            legal_action_list = board.legal_actions
+            pred_datas = [model.predict([nodes.state, tf.concat([nodes.state, np.array([[action]], \
+            dtype=np.float32).reshape([1, 9, 9, 1])], axis=-1)]) for action in legal_action_list]
+            child_nodes = [node(pred_data[0], legal_action_list[i], pred_data[3]) for i, pred_data in enumerate(pred_datas)]
+            nodes.child_nodes.extend(child_nodes)
+            child_node_tmp[0] = child_nodes if num == 0 else child_node_tmp[0] + child_nodes
     
+        child_node_tmp = [[]]
+        expansion_child_node(self, child_node_tmp, self.action)
+        for _ in range(K - 2): 
+            for u, child_node in enumerate(child_node_tmp[0]):
+                expansion_child_node(child_node, child_node_tmp, child_node.action, u)
+            print(len(child_node_tmp[0]))
+    
+
 
     def backup_parts_1(self, value, rewards):
         if self.child_nodes:
-            self.selection().backup_1(value, rewards)
+            print(rewards)
+            self.selection().backup_parts_1(value, rewards)
         else:
             value = self.mean_value
         rewards.append(self.reward)
@@ -76,8 +83,9 @@ class node:
         value, max_value, min_value = 0, 0, 10 ** 10
         rewards, G_k = [], []
         self.backup_parts_1(value, rewards)
+        print(rewards)
         for i in range(K - 1):
             discounts = [discount_per ** (t) for t in range(K - 1 - i)]
-            G_k.append(sum([discounts] * rewards[i:]) + (discount_per ** (K - 1 - i) * value))
+            G_k.append(sum(np.array([discounts]) * np.array(rewards[i:])) + (discount_per ** (K - 1 - i) * value))
         self.backup_parts_2(G_k, max_value, min_value)
         self.normalize_mean_value(max_value, min_value)

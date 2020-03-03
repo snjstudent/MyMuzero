@@ -13,16 +13,16 @@ import random
 import sys
 import MCT
 import model_muzero
-import GameBoard
+import GameBoard_tmp
 
 STEPS_PER_MOVE = 300
 
 class Plan_Act:
     def __init__(self):
-        self.board = GameBoard()
+        self.board = GameBoard_tmp.GameBoard()
         self.model_h, MCT.model = model_muzero.MuZero_MCTS(9, 2).compile_model()
-        self.trainmodel = model_muzero.Muzero(256, 256, 3).compile_model()
-        self.node = MCT.node(self.model_h(self.board.board_1), 1, 1)
+        self.trainmodel = model_muzero.Muzero(9, 2).compile_model()
+        self.node = MCT.node(self.model_h(np.array([[self.board.board_1, self.board.board_2]], dtype=np.float32).reshape([1,9,9,2]))[0], 0, 0)
         self.replay_buffer = []
 
     def plan(self):
@@ -36,7 +36,7 @@ class Plan_Act:
         next_action = self.node.selection().action
         replay_buffer_tmp += [next_action]
         self.replay_buffer.append(replay_buffer_tmp)
-        
+
         
 
         

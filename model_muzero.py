@@ -29,6 +29,7 @@ class Residual_Block(Model):
         self.batch_norm_2 = BatchNormalization()
         self.relu = ReLU()
         self.dropout = Dropout(rate=self.dropout_rate)
+        self.dense = Dense(self.filters_num * 4)
         self.conv_3.trainable = False
     
     def call(self, inputs):
@@ -42,7 +43,7 @@ class Residual_Block(Model):
         relued_3 = self.relu(batch_normed_3)
         conv_3 = self.conv_2(relued_3)
         #inputのfilter数が足りない時はself.conv_3を使う
-        return inputs + conv_3
+        return self.dense(inputs) + conv_3
 
 #16層、predict 
 #20層、dynamics、presentation
@@ -50,19 +51,20 @@ class MuZero_Model(Model):
     def __init__(self,resblock_nums, *args, **kwargs):
         super(MuZero_Model, self).__init__(*args, **kwargs)
         filters_num = 128
-        stride = 2
+        #本当はストライド2、２だとaveragepoolingができないので１に
+        stride = 1
         kernel_size = 3
-        padding = 'valid'
+        padding = 'same'
         self.conv = Conv2D(filters=filters_num, kernel_size=kernel_size, strides=stride, padding=padding)
         self.resblock_nums = resblock_nums
         self.resblocks = []
-        self.resblocks += [[Residual_Block(filters_num, stride=stride) for _ in range(self.resblock_nums[0])]]
+        self.resblocks += [[Residual_Block(int(filters_num / 4), stride=stride) for _ in range(self.resblock_nums[0])]]
         filters_num *= 2
         self.conv_1 = Conv2D(filters=filters_num, kernel_size=kernel_size, strides=stride, padding=padding)
-        self.resblocks += [[Residual_Block(filters_num, stride=stride) for _ in range(self.resblock_nums[1])]]
-        self.avgpool = AveragePooling2D(strides=stride)
-        self.resblocks += [[Residual_Block(filters_num, stride=stride) for _ in range(self.resblock_nums[2])]]
-        self.avgpool_1 = AveragePooling2D(strides=stride)
+        self.resblocks += [[Residual_Block(int(filters_num / 8), stride=stride) for _ in range(self.resblock_nums[1])]]
+        self.avgpool = AveragePooling2D(strides=stride, padding=padding)
+        self.resblocks += [[Residual_Block(int(filters_num / 8), stride=stride) for _ in range(self.resblock_nums[2])]]
+        self.avgpool_1 = AveragePooling2D(strides=stride, padding=padding)
         self.flat = Flatten()
         self.dense = Dense(1, activation='relu')
         
@@ -76,8 +78,8 @@ class MuZero_Model(Model):
         outputs = self.forward_resblock(self.resblocks[0], self.conv(inputs))
         outputs = self.forward_resblock(self.resblocks[1], self.conv_1(outputs))
         outputs = self.forward_resblock(self.resblocks[2], self.avgpool(outputs))
-        self.densed = self.dence(self.flat(outputs))
-        return self.avgpool_1(outputs)
+        self.densed = self.dense(self.flat(outputs))
+        return self.avgpool_1(outputs) if outputs.shape[1] != 1 and outputs.shape[2] != 1 else outputs
 
 
 """
@@ -118,21 +120,29 @@ class MuZero_Model_dp(Model):
 class MuZero_MCTS:
     def __init__(self, img_dim: int, img_channel: int):
         self.inputs = Input(shape=(img_dim, img_dim, img_channel))
-        self.inputs_1 = Input(shape=(6, 6, img_channel))
+        self.inputs_2 = Input(shape=(img_dim, img_dim, 128 + 1))
+        self.inputs_1 = Input(shape=(img_dim, img_dim, 128))
         self.h = MuZero_Model([3, 3, 3])
         self.g = MuZero_Model([3, 3, 3])
         self.f = MuZero_Model([2, 3, 3])
     
     def compile_model(self):
         out_h = self.h(self.inputs)
-        out_g = self.g(self.inputs_1)
+        out_g = self.g(self.inputs_2)
         out_f = self.f(self.inputs_1)
         model_h = Model(inputs=[self.inputs], outputs=[out_h, self.h.densed])
-        model_fg = Model(inputs=[self.inputs], outputs=[out_g, self.g.densed, out_f, self.f.densed])
-        model_h.compile(optimizer=tfk.optimizer.Adam(lr=0.0002),
-        loss={'binary_cross_entoropy'})
-        model_fg.compile(optimizer=tfk.optimizer.Adam(lr=0.0002),
-        loss={'binary_cross_entoropy'})
+        model_fg = Model(inputs=[self.inputs_1, self.inputs_2], outputs=[out_g, self.g.densed, out_f, self.f.densed])
+
+        '''
+
+        BCEに直しておく！
+
+        '''
+
+        model_h.compile(optimizer=tfk.optimizers.Adam(lr=0.0002),
+        loss=['mean_squared_error','mean_squared_error'])
+        model_fg.compile(optimizer=tfk.optimizers.Adam(lr=0.0002),
+        loss=['mean_squared_error','mean_squared_error','mean_squared_error','mean_squared_error'])
         return model_h, model_fg
     
 
@@ -149,18 +159,21 @@ class TrainModel(Model):
         for i in range(5):
             values.append(self.muzero_f(state))
             policies.append(self.muzero_f.densed)
-            state = self.muzero_g(state, action[i])
+            #state = self.muzero_g(tf.concat([state, tf.reshape(np.array([[[action[i]]]], dtype=np.float32), shape=[1, len(action[i][0]), len(action[i][1]), 1])], axis=-1))
+            state = self.muzero_g(tf.concat([state, action[:][:][:][i:i + 1]], axis=-1))
             rewards.append(self.muzero_g.densed)
         return [policies, values, rewards]
 
 class Muzero:
     def __init__(self, img_dim: int, img_channel: int):
         self.inputs = Input(shape=(img_dim, img_dim, img_channel))
+        self.inputs_action = Input(shape=(img_dim, img_dim, 5))
+        #self.inputs_action = [[[0 for i in range(9)] for u in range(9)] for s in range(5)]
         self.train_muzero = TrainModel()
     
     def compile_model(self):
-        output = self.train_muzero(self.inputs)
-        model = Model(inputs=[self.inputs], outputs=[output])
-        model.compile(optimizer=tfk.optimizer.Adam(lr=0.0002),
+        output = self.train_muzero(self.inputs, self.inputs_action)
+        model = Model(inputs=[self.inputs, self.inputs_action], outputs=[output])
+        model.compile(optimizer=tfk.optimizers.Adam(lr=0.0002),
         loss='bce')
         return model
