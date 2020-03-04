@@ -23,13 +23,13 @@ board = GameBoard_tmp.GameBoard()
 
 
 class node:
-    def __init__(self, state, action, policy):
+    def __init__(self, state, action, policy, reward: float = 0.0):
         self.action = action
         self.state = state
         self.visit_counts = 0
         self.mean_value = 0
         self.policy = policy
-        self.reward = 0
+        self.reward = reward
         self.child_nodes = []
     
     def selection(self):
@@ -44,7 +44,7 @@ class node:
             legal_action_list = board.legal_actions
             pred_datas = [model.predict([nodes.state, tf.concat([nodes.state, np.array([[action]], \
             dtype=np.float32).reshape([1, 9, 9, 1])], axis=-1)]) for action in legal_action_list]
-            child_nodes = [node(pred_data[0], legal_action_list[i], pred_data[3]) for i, pred_data in enumerate(pred_datas)]
+            child_nodes = [node(pred_data[0], legal_action_list[i], pred_data[3], pred_data[1]) for i, pred_data in enumerate(pred_datas)]
             nodes.child_nodes.extend(child_nodes)
             child_node_tmp[0] = child_nodes if num == 0 else child_node_tmp[0] + child_nodes
     
@@ -53,13 +53,9 @@ class node:
         for _ in range(K - 2): 
             for u, child_node in enumerate(child_node_tmp[0]):
                 expansion_child_node(child_node, child_node_tmp, child_node.action, u)
-            print(len(child_node_tmp[0]))
     
-
-
     def backup_parts_1(self, value, rewards):
         if self.child_nodes:
-            print(rewards)
             self.selection().backup_parts_1(value, rewards)
         else:
             value = self.mean_value
@@ -67,7 +63,7 @@ class node:
     
     def backup_parts_2(self, G_k, max_value, min_value):
         if self.child_nodes:
-            self.selection().backup_2(G_k, max_value, min_value)
+            self.selection().backup_parts_2(G_k, max_value, min_value)
         self.mean_value = ((self.visit_counts * self.mean_value) + G_k[-1]) / (self.visit_counts + 1)
         G_k = G_k[:-1]
         max_value = self.mean_value if self.mean_value > max_value else max_value
@@ -83,9 +79,8 @@ class node:
         value, max_value, min_value = 0, 0, 10 ** 10
         rewards, G_k = [], []
         self.backup_parts_1(value, rewards)
-        print(rewards)
         for i in range(K - 1):
-            discounts = [discount_per ** (t) for t in range(K - 1 - i)]
-            G_k.append(sum(np.array([discounts]) * np.array(rewards[i:])) + (discount_per ** (K - 1 - i) * value))
+            discounts = [discount_per ** (t) for t in range(K - i)]
+            G_k.append(sum(np.dot(np.array([discounts]) , np.array(rewards[i:])) + (discount_per ** (K - 1 - i) * value)))
         self.backup_parts_2(G_k, max_value, min_value)
         self.normalize_mean_value(max_value, min_value)

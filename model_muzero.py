@@ -138,11 +138,13 @@ class MuZero_MCTS:
         BCEに直しておく！
 
         '''
-
+        
         model_h.compile(optimizer=tfk.optimizers.Adam(lr=0.0002),
         loss=['mean_squared_error','mean_squared_error'])
         model_fg.compile(optimizer=tfk.optimizers.Adam(lr=0.0002),
-        loss=['mean_squared_error','mean_squared_error','mean_squared_error','mean_squared_error'])
+        loss=['mean_squared_error', 'mean_squared_error', 'mean_squared_error', 'mean_squared_error'])
+        model_fg.summary()
+        sys.exit()
         return model_h, model_fg
     
 
@@ -152,7 +154,11 @@ class TrainModel(Model):
         self.muzero_h = MuZero_Model([3, 3, 3])
         self.muzero_g = MuZero_Model([3, 3, 3])
         self.muzero_f = MuZero_Model([2, 3, 3])
-        
+    
+    def get_layer(self):
+        return self.muzero_h.get_weights(), \
+        self.muzero_f.get_weights(), self.muzero_g.get_weights()
+    
     def call(self, inputs, action):
         state = self.muzero_h(inputs)
         policies, values, rewards = [], [], []
@@ -164,16 +170,22 @@ class TrainModel(Model):
             rewards.append(self.muzero_g.densed)
         return [policies, values, rewards]
 
-class Muzero:
-    def __init__(self, img_dim: int, img_channel: int):
+class Muzero(Model):
+    def __init__(self, img_dim: int, img_channel: int, *args, **kwargs):
+        super(Muzero, self).__init__(*args, **kwargs)
         self.inputs = Input(shape=(img_dim, img_dim, img_channel))
         self.inputs_action = Input(shape=(img_dim, img_dim, 5))
         #self.inputs_action = [[[0 for i in range(9)] for u in range(9)] for s in range(5)]
         self.train_muzero = TrainModel()
     
+    def get_layer(self):
+        return self.train_muzero.get_layer()
+
     def compile_model(self):
         output = self.train_muzero(self.inputs, self.inputs_action)
         model = Model(inputs=[self.inputs, self.inputs_action], outputs=[output])
         model.compile(optimizer=tfk.optimizers.Adam(lr=0.0002),
         loss='bce')
+        model.summary()
         return model
+

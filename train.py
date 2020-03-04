@@ -19,17 +19,49 @@ import Plan_Act
 class Train:
     def __init__(self):
         self.plan_act = Plan_Act.Plan_Act()
-        self.muzero = model_muzero.Muzero(256, 3).compile_model()
+        self.muzero = model_muzero.Muzero(9, 3).compile_model()
+        self.board = GameBoard_tmp.GameBoard()
+
+    def copy_layer_weights(self, model_train, model_h, model_mct):
+        #trainで訓練されたモデルをモンテカルロ用のモデルにコピーする
+        weight_h, weight_f, weight_g = model_train.get_layer()
+        model_h.set_weights(weight_h)
+        model_mct.f.set_weights(weight_f)
+        model_mct.g.set_weights(weight_g)
+
+    def save_weights(self, model):
+        #重みを保存する
+        pass
+
+    def save_train_datas(self, train_datas):
+        #一応訓練データも保存できるようにしておく
+        pass
+    
+    def load_weights(self, model_train, model_h, model_mct):
+        #訓練再開時にモデルの重さを読み込む
+        pass
+
+    def make_train_data(self, buffers):
+        actions = [i[-1] for i in buffers]
+        buffers = [i[:-1] for i in buffers]
+        train_datas = [[], [], []]
+        for buffer in buffers:
+            for i, data in enumerate(buffer):
+                train_datas[i].append(data)
+        return actions, train_datas
         
     def train(self):
         self.plan_act.plan()
         self.plan_act.act()
-        print(self.plan_act.replay_buffer)
-        for i in range(len(self.plan_act.replay_buffer)):
-            self.muzero.fit([self.plan_act.board.board_1, self.plan_act.board.board_2], self.plan_act.replay_buffer[i])
-            self.plan_act.board = self.plan_act.board.next(self.plan_act.replay_buffer[i][2]) if not self.plan_act.board.end else self.plan_act.board
+        for i in range(len(self.plan_act.replay_buffer) - 5):
+            train_buffer = self.plan_act.replay_buffer[i:i + 5]
+            action, train_datas = self.make_train_data(train_buffer)
+            self.muzero.fit([np.array([[self.plan_act.board.board_1, self.plan_act.board.board_2]], dtype=np.float32).reshape([9, 9, 2]), action], train_datas)
+            self.board = self.board.next(train_buffer[0][3]) if not self.board.end else self.board
+        self.copy_layer_weights(self.muzero, self.plan_act.model_h, MCT.model)
 
-train = Train()
-train.train()
+if __name__ == "__main__":
+    train = Train()
+    train.train()
 
             
