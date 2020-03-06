@@ -27,7 +27,7 @@ class node:
         self.action = action
         self.state = state
         self.visit_counts = 0
-        self.mean_value = 0
+        self.mean_value = 0.0
         self.policy = policy
         self.reward = reward
         self.child_nodes = []
@@ -61,26 +61,26 @@ class node:
             value = self.mean_value
         rewards.append(self.reward)
     
-    def backup_parts_2(self, G_k, max_value, min_value):
+    def backup_parts_2(self, G_k, max_value: float, min_value: float):
         if self.child_nodes:
             self.selection().backup_parts_2(G_k, max_value, min_value)
-        self.mean_value = ((self.visit_counts * self.mean_value) + G_k[-1]) / (self.visit_counts + 1)
+        self.mean_value += (((self.visit_counts * self.mean_value) + G_k[-1]) / (self.visit_counts + 1)) - self.mean_value
         G_k = G_k[:-1]
-        max_value = self.mean_value if self.mean_value > max_value else max_value
-        min_value = self.mean_value if min_value > self.mean_value else min_value
+        max_value += self.mean_value - max_value if self.mean_value > max_value else max_value
+        min_value += self.mean_value - min_value if min_value > self.mean_value else min_value
         self.visit_counts += 1
 
     def normalize_mean_value(self, max_value, min_value):
         if self.child_nodes:
             self.selection().normalize_mean_value(max_value, min_value)
-        self.mean_value = (self.mean_value - min_value) / (max_value - min_value)
+        self.mean_value = ((self.mean_value - min_value) / (max_value - min_value)) - self.mean_value
         
     def backup(self):
-        value, max_value, min_value = 0, 0, 10 ** 10
+        value, max_value, min_value = 0.0, 0.0, 10.0 ** 10
         rewards, G_k = [], []
         self.backup_parts_1(value, rewards)
         for i in range(K - 1):
             discounts = [discount_per ** (t) for t in range(K - i)]
-            G_k.append(sum(np.dot(np.array([discounts]) , np.array(rewards[i:])) + (discount_per ** (K - 1 - i) * value)))
+            G_k.append(sum(np.dot(np.array([discounts]), np.array(rewards[i:])) + (discount_per ** (K - 1 - i) * value)))
         self.backup_parts_2(G_k, max_value, min_value)
         self.normalize_mean_value(max_value, min_value)

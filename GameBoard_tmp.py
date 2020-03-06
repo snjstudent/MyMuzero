@@ -6,7 +6,7 @@ import tensorflow as tf
 import tensorflow.keras as tfk
 from tensorflow.keras.layers import Conv2D, Input, Layer, Dense, Flatten, Conv2DTranspose, BatchNormalization, ReLU, Dropout, MaxPool2D, AveragePooling2D,Softmax
 from tensorflow.keras.models import Model,Sequential
-import tensorflow_addons as tfa
+#import tensorflow_addons as tfa
 import numpy as np
 import random
 import sys
